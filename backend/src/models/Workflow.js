@@ -50,9 +50,16 @@ const workflowSchema = new mongoose.Schema(
       default: null,
     },
 
+    // Enable or disable workflow
     isActive: {
       type: Boolean,
       default: true,
+    },
+
+    // Track whether the condition has already triggered
+    isConditionActive: {
+      type: Boolean,
+      default: false,
     },
   },
   { timestamps: true }

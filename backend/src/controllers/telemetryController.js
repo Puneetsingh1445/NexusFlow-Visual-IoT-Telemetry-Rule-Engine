@@ -50,13 +50,19 @@ export const createTelemetry = async (req, res) => {
     device.status = "online";
     await device.save();
 
+    // Get Socket.IO instance from Express
+    const io = req.app.get("io");
+
     // Automatically evaluate active workflows
-    const workflowResults = await evaluateWorkflows({
-      deviceId,
-      temperature,
-      humidity,
-      pressure,
-    });
+    const workflowResults = await evaluateWorkflows(
+      {
+        deviceId,
+        temperature,
+        humidity,
+        pressure,
+      },
+      io
+    );
 
     return res.status(201).json({
       success: true,
