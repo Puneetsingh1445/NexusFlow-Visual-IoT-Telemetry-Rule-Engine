@@ -11,19 +11,24 @@ import workflowRoutes from "./routes/workflowRoutes.js";
 import alertRoutes from "./routes/alertRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 
+// Import authentication middleware
+import authMiddleware from "./middleware/authMiddleware.js";
+
 const app = express();
 
-// Security middleware
+// ================================
+// MIDDLEWARE
+// ================================
+
 app.use(helmet());
 app.use(cors());
-
-// Parse JSON requests
 app.use(express.json());
-
-// HTTP request logger
 app.use(morgan("dev"));
 
-// Home route
+// ================================
+// HOME ROUTE
+// ================================
+
 app.get("/", (req, res) => {
   res.json({
     success: true,
@@ -31,7 +36,10 @@ app.get("/", (req, res) => {
   });
 });
 
-// Health check
+// ================================
+// HEALTH CHECK ROUTE
+// ================================
+
 app.get("/api/health", (req, res) => {
   res.status(200).json({
     success: true,
@@ -40,22 +48,50 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-// Authentication routes
+// ================================
+// AUTHENTICATION ROUTES
+// ================================
+
+// Register and Login
 app.use("/api/auth", authRoutes);
 
-// Device routes
+// Protected route - Get logged-in user
+app.get("/api/auth/me", authMiddleware, (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: "Authentication successful!",
+    user: req.user,
+  });
+});
+
+// ================================
+// DEVICE ROUTES
+// ================================
+
 app.use("/api/devices", deviceRoutes);
 
-// Telemetry routes
+// ================================
+// TELEMETRY ROUTES
+// ================================
+
 app.use("/api/telemetry", telemetryRoutes);
 
-// Workflow routes
+// ================================
+// WORKFLOW ROUTES
+// ================================
+
 app.use("/api/workflows", workflowRoutes);
 
-// Alert routes
+// ================================
+// ALERT ROUTES
+// ================================
+
 app.use("/api/alerts", alertRoutes);
 
-// Handle unknown API routes
+// ================================
+// 404 - ROUTE NOT FOUND
+// ================================
+
 app.use((req, res) => {
   res.status(404).json({
     success: false,
