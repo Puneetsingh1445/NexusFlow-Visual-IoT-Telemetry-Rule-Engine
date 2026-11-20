@@ -37,7 +37,7 @@ app.get("/", (req, res) => {
 });
 
 // ================================
-// HEALTH CHECK ROUTE
+// HEALTH CHECK ROUTE  (public — no auth required)
 // ================================
 
 app.get("/api/health", (req, res) => {
@@ -49,10 +49,11 @@ app.get("/api/health", (req, res) => {
 });
 
 // ================================
-// AUTHENTICATION ROUTES
+// AUTHENTICATION ROUTES  (public — no auth required)
+// POST /api/auth/register  → register a new user
+// POST /api/auth/login     → login and receive a JWT
 // ================================
 
-// Register and Login
 app.use("/api/auth", authRoutes);
 
 // Protected route - Get logged-in user
@@ -65,28 +66,32 @@ app.get("/api/auth/me", authMiddleware, (req, res) => {
 });
 
 // ================================
-// DEVICE ROUTES
+// DEVICE ROUTES  (protected — valid JWT required)
 // ================================
 
-app.use("/api/devices", deviceRoutes);
+// authMiddleware is passed as the second argument.
+// Express will run it BEFORE deviceRoutes on every request to /api/devices.
+// If the token is missing or invalid → 401 is returned immediately.
+// If the token is valid → req.user is populated and deviceRoutes handles the request.
+app.use("/api/devices", authMiddleware, deviceRoutes);
 
 // ================================
-// TELEMETRY ROUTES
+// TELEMETRY ROUTES  (protected — valid JWT required)
 // ================================
 
-app.use("/api/telemetry", telemetryRoutes);
+app.use("/api/telemetry", authMiddleware, telemetryRoutes);
 
 // ================================
-// WORKFLOW ROUTES
+// WORKFLOW ROUTES  (protected — valid JWT required)
 // ================================
 
-app.use("/api/workflows", workflowRoutes);
+app.use("/api/workflows", authMiddleware, workflowRoutes);
 
 // ================================
-// ALERT ROUTES
+// ALERT ROUTES  (protected — valid JWT required)
 // ================================
 
-app.use("/api/alerts", alertRoutes);
+app.use("/api/alerts", authMiddleware, alertRoutes);
 
 // ================================
 // 404 - ROUTE NOT FOUND
