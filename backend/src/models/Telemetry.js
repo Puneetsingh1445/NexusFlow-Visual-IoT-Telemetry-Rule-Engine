@@ -3,6 +3,13 @@ import mongoose from "mongoose";
 
 const telemetrySchema = new mongoose.Schema(
   {
+    // userId links this telemetry reading to the user who owns the source device
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+
     deviceId: {
       type: String,
       required: true,
@@ -38,7 +45,8 @@ const telemetrySchema = new mongoose.Schema(
   }
 );
 
-telemetrySchema.index({ deviceId: 1, timestamp: -1 });
+// Compound index: fast queries for a user's device telemetry in time order
+telemetrySchema.index({ userId: 1, deviceId: 1, timestamp: -1 });
 
 const Telemetry = mongoose.model("Telemetry", telemetrySchema);
 

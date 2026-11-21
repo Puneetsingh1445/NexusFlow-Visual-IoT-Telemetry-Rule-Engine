@@ -14,6 +14,9 @@ import authRoutes from "./routes/authRoutes.js";
 // Import authentication middleware
 import authMiddleware from "./middleware/authMiddleware.js";
 
+// Import centralized error handler (Task 3)
+import errorHandler from "./middleware/errorHandler.js";
+
 const app = express();
 
 // ================================
@@ -56,7 +59,7 @@ app.get("/api/health", (req, res) => {
 
 app.use("/api/auth", authRoutes);
 
-// Protected route - Get logged-in user
+// Protected route - Get logged-in user info
 app.get("/api/auth/me", authMiddleware, (req, res) => {
   res.status(200).json({
     success: true,
@@ -69,10 +72,6 @@ app.get("/api/auth/me", authMiddleware, (req, res) => {
 // DEVICE ROUTES  (protected — valid JWT required)
 // ================================
 
-// authMiddleware is passed as the second argument.
-// Express will run it BEFORE deviceRoutes on every request to /api/devices.
-// If the token is missing or invalid → 401 is returned immediately.
-// If the token is valid → req.user is populated and deviceRoutes handles the request.
 app.use("/api/devices", authMiddleware, deviceRoutes);
 
 // ================================
@@ -100,8 +99,16 @@ app.use("/api/alerts", authMiddleware, alertRoutes);
 app.use((req, res) => {
   res.status(404).json({
     success: false,
-    message: "API route not found",
+    message: "API endpoint does not exist. Please check the url.",
   });
 });
+
+// ================================
+// CENTRALIZED ERROR HANDLER  ← MUST be last, after all routes and 404
+// Express identifies this as an error handler because it has 4 parameters.
+// All controllers call next(error) to reach this handler.
+// ================================
+
+app.use(errorHandler);
 
 export default app;

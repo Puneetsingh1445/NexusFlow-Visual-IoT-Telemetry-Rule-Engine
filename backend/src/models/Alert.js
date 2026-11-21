@@ -3,6 +3,13 @@ import mongoose from "mongoose";
 
 const alertSchema = new mongoose.Schema(
   {
+    // userId links this alert to the user whose workflow triggered it
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+
     deviceId: {
       type: String,
       required: true,

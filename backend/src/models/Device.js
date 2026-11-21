@@ -3,6 +3,13 @@ import mongoose from "mongoose";
 
 const deviceSchema = new mongoose.Schema(
   {
+    // userId links this device to its owner (the authenticated user who created it)
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+
     name: {
       type: String,
       required: true,

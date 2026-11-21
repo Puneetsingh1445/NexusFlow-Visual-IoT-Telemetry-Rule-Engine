@@ -1,78 +1,62 @@
 
+/**
+ * authController.js — User registration and login.
+ *
+ * WHAT CHANGED from the original:
+ * - ALL manual validation (if !name, emailRegex, password.length checks) has been
+ *   REMOVED from this file. That work is now done by Zod schemas in
+ *   validators/auth.validators.js, applied by the validate middleware in the route.
+ * - By the time these functions run, req.body is already cleaned and validated.
+ * - try/catch blocks now use next(error) instead of inline res.status(500) responses.
+ *   This lets the centralized errorHandler in middleware/errorHandler.js handle
+ *   ALL error formatting consistently.
+ *
+ * WHAT IS UNCHANGED:
+ * - bcrypt hashing, JWT generation, duplicate email handling — all identical.
+ */
+
 import User from "../models/User.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import ApiError from "../errors/ApiError.js";
 
+// ─────────────────────────────────────────────
 // USER REGISTRATION
-export const registerUser = async (req, res) => {
+// ─────────────────────────────────────────────
+export const registerUser = async (req, res, next) => {
   try {
+    // req.body is already validated by registerSchema — name, email, password are clean
     const { name, email, password } = req.body;
 
-    // 1. Validate required fields
-    if (!name || !email || !password) {
-      return res.status(400).json({
-        success: false,
-        message: "Name, email and password are required",
-      });
-    }
-
-    // 2. Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-    if (!emailRegex.test(email)) {
-      return res.status(400).json({
-        success: false,
-        message: "Please provide a valid email address",
-      });
-    }
-
-    // 3. Validate password length
-    if (typeof password !== "string" || password.length < 8) {
-      return res.status(400).json({
-        success: false,
-        message: "Password must contain at least 8 characters",
-      });
-    }
-
-    // 4. Check whether user already exists
-    const existingUser = await User.findOne({
-      email: email.toLowerCase().trim(),
-    });
+    // Check whether a user already exists with this email
+    const existingUser = await User.findOne({ email });
 
     if (existingUser) {
-      return res.status(409).json({
-        success: false,
-        message: "User already exists with this email",
-      });
+      // 409 Conflict — the resource (user with this email) already exists
+      return next(new ApiError(409, "An account with this email already exists"));
     }
 
-    // 5. Hash password
+    // Hash the password (cost factor 12 — good balance of security vs speed)
     const hashedPassword = await bcrypt.hash(password, 12);
 
-    // 6. Create user
+    // Create the user document in MongoDB
     const user = await User.create({
-      name: name.trim(),
-      email: email.toLowerCase().trim(),
+      name,
+      email,
       password: hashedPassword,
     });
 
-    // 7. Generate JWT token
+    // Generate a JWT for immediate login after registration
     if (!process.env.JWT_SECRET) {
       throw new Error("JWT_SECRET is not configured");
     }
 
     const token = jwt.sign(
-      {
-        userId: user._id,
-        role: user.role,
-      },
+      { userId: user._id, role: user.role },
       process.env.JWT_SECRET,
-      {
-        expiresIn: "1d",
-      }
+      { expiresIn: "1d" }
     );
 
-    // 8. Send response
     return res.status(201).json({
       success: true,
       message: "User registered successfully",
@@ -86,89 +70,47 @@ export const registerUser = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Registration error:", error.message);
-
-    // Handle duplicate email error
-    if (error.code === 11000) {
-      return res.status(409).json({
-        success: false,
-        message: "User already exists with this email",
-      });
-    }
-
-    return res.status(500).json({
-      success: false,
-      message: "Registration failed",
-    });
+    // Pass ALL errors to the centralized handler.
+    // MongoDB duplicate key (11000) is handled there automatically.
+    return next(error);
   }
 };
 
-
+// ─────────────────────────────────────────────
 // USER LOGIN
-export const loginUser = async (req, res) => {
+// ─────────────────────────────────────────────
+export const loginUser = async (req, res, next) => {
   try {
+    // req.body is already validated by loginSchema — email and password are clean
     const { email, password } = req.body;
 
-    // 1. Validate required fields
-    if (!email || !password) {
-      return res.status(400).json({
-        success: false,
-        message: "Email and password are required",
-      });
-    }
+    // Find user — include password field (normally hidden by select: false in schema)
+    const user = await User.findOne({ email }).select("+password");
 
-    if (typeof email !== "string" || typeof password !== "string") {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid input",
-      });
-    }
-
-    // 2. Find user in MongoDB
-    // Password is normally hidden by select: false
-    const user = await User.findOne({
-      email: email.toLowerCase().trim(),
-    }).select("+password");
-
-    // 3. Check if user exists
+    // IMPORTANT: We return the same message whether email is wrong OR password is wrong.
+    // This prevents "user enumeration" — an attacker cannot discover which emails exist.
     if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid email or password",
-      });
+      return next(new ApiError(401, "Invalid email or password"));
     }
 
-    // 4. Compare entered password with stored hash
-    const isPasswordCorrect = await bcrypt.compare(
-      password,
-      user.password
-    );
+    // Compare the plaintext password against the stored hash
+    const isPasswordCorrect = await bcrypt.compare(password, user.password);
 
     if (!isPasswordCorrect) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid email or password",
-      });
+      return next(new ApiError(401, "Invalid email or password"));
     }
 
-    // 5. Check JWT configuration
     if (!process.env.JWT_SECRET) {
       throw new Error("JWT_SECRET is not configured");
     }
 
-    // 6. Generate JWT token
+    // Generate JWT
     const token = jwt.sign(
-      {
-        userId: user._id,
-        role: user.role,
-      },
+      { userId: user._id, role: user.role },
       process.env.JWT_SECRET,
-      {
-        expiresIn: "1d",
-      }
+      { expiresIn: "1d" }
     );
 
-    // 7. Send successful response
     return res.status(200).json({
       success: true,
       message: "Login successful",
@@ -182,11 +124,6 @@ export const loginUser = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Login error:", error.message);
-
-    return res.status(500).json({
-      success: false,
-      message: "Login failed",
-    });
+    return next(error);
   }
 };

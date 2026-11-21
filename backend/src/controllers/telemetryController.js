@@ -1,66 +1,69 @@
 
+/**
+ * telemetryController.js — Sensor data ingestion and retrieval.
+ *
+ * WHAT CHANGED from the original:
+ * - Manual validation for deviceId and sensor presence removed (Zod handles it).
+ * - Device lookup now also checks userId — prevents posting telemetry to
+ *   another user's device.
+ * - Telemetry is saved with userId for direct ownership filtering.
+ * - evaluateWorkflows now receives userId so the rule engine only evaluates
+ *   the authenticated user's workflows.
+ * - next(error) is used instead of inline 500 responses.
+ *
+ * WHAT IS UNCHANGED:
+ * - Device status update (lastSeen, status = "online") is identical.
+ * - Socket.IO workflow evaluation pipeline is identical.
+ */
+
 import Telemetry from "../models/Telemetry.js";
 import Device from "../models/Device.js";
 import evaluateWorkflows from "../services/workflowEvaluator.js";
+import ApiError from "../errors/ApiError.js";
 
-// Receive and store sensor readings
-export const createTelemetry = async (req, res) => {
+// ─────────────────────────────────────────────
+// CREATE TELEMETRY (Receive sensor readings)
+// ─────────────────────────────────────────────
+export const createTelemetry = async (req, res, next) => {
   try {
+    // req.body is already validated by createTelemetrySchema
     const { deviceId, temperature, humidity, pressure } = req.body;
+    const userId = req.user.userId;
 
-    if (!deviceId) {
-      return res.status(400).json({
-        success: false,
-        message: "Device ID is required",
-      });
-    }
-
-    // Check whether the device exists
-    const device = await Device.findOne({ deviceId });
+    // Verify the device exists AND belongs to this user
+    // This prevents User B from posting telemetry to User A's device
+    const device = await Device.findOne({ deviceId, userId });
 
     if (!device) {
-      return res.status(404).json({
-        success: false,
-        message: "Device not found. Register the device first.",
-      });
+      return next(
+        new ApiError(
+          404,
+          "Device not found. Make sure the device belongs to your account."
+        )
+      );
     }
 
-    // Require at least one sensor reading
-    if (
-      temperature === undefined &&
-      humidity === undefined &&
-      pressure === undefined
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "At least one sensor reading is required",
-      });
-    }
-
-    // Save telemetry in MongoDB
+    // Save telemetry — include userId for direct filtering later
     const telemetry = await Telemetry.create({
       deviceId,
       temperature,
       humidity,
       pressure,
+      userId, // ← ownership recorded here
     });
 
-    // Update device status
+    // Update the device's last-seen timestamp and online status
     device.lastSeen = telemetry.timestamp;
     device.status = "online";
     await device.save();
 
-    // Get Socket.IO instance from Express
+    // Get the Socket.IO instance attached to Express
     const io = req.app.get("io");
 
-    // Automatically evaluate active workflows
+    // Evaluate active workflows for this device + user combination
+    // Passing userId ensures workflows from other users are never triggered
     const workflowResults = await evaluateWorkflows(
-      {
-        deviceId,
-        temperature,
-        humidity,
-        pressure,
-      },
+      { deviceId, temperature, humidity, pressure, userId },
       io
     );
 
@@ -72,21 +75,20 @@ export const createTelemetry = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Telemetry error:", error.message);
-
-    return res.status(500).json({
-      success: false,
-      message: "Failed to process telemetry",
-    });
+    return next(error);
   }
 };
 
-// Get telemetry for a specific device
-export const getDeviceTelemetry = async (req, res) => {
+// ─────────────────────────────────────────────
+// GET DEVICE TELEMETRY
+// ─────────────────────────────────────────────
+export const getDeviceTelemetry = async (req, res, next) => {
   try {
-    const { deviceId } = req.params;
+    const { deviceId } = req.params; // already validated by Zod
+    const userId = req.user.userId;
 
-    const telemetry = await Telemetry.find({ deviceId })
+    // Filter by BOTH deviceId and userId — no cross-user data leakage
+    const telemetry = await Telemetry.find({ deviceId, userId })
       .sort({ timestamp: -1 })
       .limit(100);
 
@@ -95,10 +97,8 @@ export const getDeviceTelemetry = async (req, res) => {
       count: telemetry.length,
       data: telemetry,
     });
+
   } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: "Failed to fetch telemetry",
-    });
+    return next(error);
   }
 };

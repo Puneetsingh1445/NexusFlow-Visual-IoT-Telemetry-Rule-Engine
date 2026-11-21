@@ -3,6 +3,13 @@ import mongoose from "mongoose";
 
 const workflowSchema = new mongoose.Schema(
   {
+    // userId links this workflow to its owner
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+
     name: {
       type: String,
       required: true,
@@ -43,20 +50,18 @@ const workflowSchema = new mongoose.Schema(
       enum: ["alert", "webhook"],
     },
 
-    // Webhook destination URL
     webhookUrl: {
       type: String,
       trim: true,
       default: null,
     },
 
-    // Enable or disable workflow
     isActive: {
       type: Boolean,
       default: true,
     },
 
-    // Track whether the condition has already triggered
+    // Track whether the condition has already triggered (prevents duplicate actions)
     isConditionActive: {
       type: Boolean,
       default: false,
