@@ -99,7 +99,7 @@ app.use("/api/alerts", authMiddleware, alertRoutes);
 app.use((req, res) => {
   res.status(404).json({
     success: false,
-    message: "API endpoint does not exist. Please check the url.",
+   message: "The requested API endpoint could not be found. Please verify the URL and try again.",
   });
 });
 
