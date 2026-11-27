@@ -99,7 +99,7 @@ app.use("/api/alerts", authMiddleware, alertRoutes);
 app.use((req, res) => {
   res.status(404).json({
     success: false,
-   message: "The requested API endpoint could not found.",
+   message: "The requested API endpoint could not be found.",
   });
 });
 
